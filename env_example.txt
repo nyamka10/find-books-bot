@@ -1,0 +1,13 @@
+# Адрес сайта Флибуста
+FLIBUSTA_BASE_URL=https://flibusta.is
+
+# Учетные данные Флибуста
+FLIBUSTA_USERNAME=ваш_логин_здесь
+FLIBUSTA_PASSWORD=ваш_пароль_здесь
+
+# Настройки Gmail для отправки на Kindle
+GMAIL_LOGIN=ваш_gmail@gmail.com
+GMAIL_PASSWORD=ваш_пароль_приложения_здесь
+
+# Токен Telegram бота
+TELEGRAM_BOT_TOKEN=ваш_токен_бота_здесь

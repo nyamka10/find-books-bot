@@ -1,0 +1,27 @@
+services:
+  flibusta-bot:
+    build: .
+    container_name: flibusta-telegram-bot
+    restart: unless-stopped
+    environment:
+      - FLIBUSTA_BASE_URL=${FLIBUSTA_BASE_URL:-https://flibusta.is}
+      - FLIBUSTA_USERNAME=${FLIBUSTA_USERNAME}
+      - FLIBUSTA_PASSWORD=${FLIBUSTA_PASSWORD}
+      - GMAIL_LOGIN=${GMAIL_LOGIN}
+      - GMAIL_PASSWORD=${GMAIL_PASSWORD}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    networks:
+      - flibusta-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; print('OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  flibusta-network:
+    driver: bridge
