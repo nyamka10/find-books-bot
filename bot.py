@@ -333,7 +333,7 @@ async def kindle_settings_menu(message: types.Message):
             "⚙️ **Настройка Kindle**\n\n"
             "📧 Для отправки книг на Kindle нужно указать ваш Kindle email.\n\n"
             "🔐 **Шаг 1: Добавьте бота в белый список Amazon**\n"
-            "📋 Подробная инструкция: [Нажмите здесь](https://telegra.ph/Dobavlenie-pochty-v-belyj-spisok-Amazon-08-24)\n\n"
+            "📋 Подробная инструкция: https://telegra.ph/Dobavlenie-pochty-v-belyj-spisok-Amazon-08-24\n\n"
             "📝 **Шаг 2: Введите ваш Kindle email**\n"
             "После добавления бота в белый список, нажмите кнопку ниже:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
