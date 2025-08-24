@@ -320,12 +320,10 @@ async def kindle_settings_menu(message: types.Message):
             f"✅ **Статус:** Настроено и готово к использованию\n\n"
             f"🔧 **Действия:**\n"
             f"• Изменить email\n"
-            f"• Отправить тестовую книгу\n"
-            f"• Просмотреть историю отправок\n\n"
+            f"• Отправить тестовую книгу\n\n"
             f"Выберите действие:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="✏️ Изменить email", callback_data="change_kindle_email")],
-                [InlineKeyboardButton(text="📚 История Kindle", callback_data="kindle_history")],
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
             ]),
             parse_mode="Markdown"
