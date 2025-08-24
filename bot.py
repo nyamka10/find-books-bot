@@ -985,7 +985,6 @@ async def process_kindle_email(message: types.Message, state: FSMContext):
         f"🔍 **Проверьте настройки:**\n"
         f"✅ Email указан верно\n"
         f"✅ Бот `abookerbot@gmail.com` добавлен в белый список Amazon\n\n"
-        f"📋 **Инструкция:** [Нажмите здесь](https://telegra.ph/Dobavlenie-pochty-v-belyj-spisok-Amazon-08-24)\n\n"
         f"🎯 **Все настроено правильно?**",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, все верно", callback_data="confirm_kindle_email")],
