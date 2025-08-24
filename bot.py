@@ -1141,7 +1141,347 @@ async def admin_clear_cache(callback: types.CallbackQuery):
             parse_mode="Markdown"
         )
 
+@dp.callback_query(F.data == "admin_users")
+async def admin_users_list(callback: types.CallbackQuery):
+    """Показывает список всех пользователей"""
+    try:
+        if not await is_admin(callback.from_user.id):
+            await callback.answer("❌ У вас нет доступа к этой функции")
+            return
+        
+        await callback.answer("👥 Загружаю список пользователей...")
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("""
+                SELECT telegram_id, kindle_email, created_at 
+                FROM users 
+                ORDER BY created_at DESC 
+                LIMIT 50
+            """)
+            users = await cursor.fetchall()
+        
+        if not users:
+            await callback.message.answer(
+                "📭 **Список пользователей пуст**\n\n"
+                "Пока нет зарегистрированных пользователей.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👑 Админ-панель", callback_data="admin_panel")],
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+                ]),
+                parse_mode="Markdown"
+            )
+            return
+        
+        text = "👥 **Последние 50 пользователей:**\n\n"
+        for i, (telegram_id, kindle_email, created_at) in enumerate(users, 1):
+            text += f"{i}. ID: `{telegram_id}`\n"
+            if kindle_email:
+                text += f"   📧 {kindle_email}\n"
+            text += f"   📅 {created_at}\n\n"
+        
+        # Разбиваем на части, если текст слишком длинный
+        if len(text) > 4000:
+            parts = [text[i:i+4000] for i in range(0, len(text), 4000)]
+            for i, part in enumerate(parts):
+                await callback.message.answer(
+                    f"{part}\n\n*Часть {i+1} из {len(parts)}*",
+                    parse_mode="Markdown"
+                )
+        else:
+            await callback.message.answer(
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👑 Админ-панель", callback_data="admin_panel")],
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+                ]),
+                parse_mode="Markdown"
+            )
+        
+    except Exception as e:
+        logger.error(f"Ошибка показа списка пользователей: {e}")
+        await callback.answer("❌ Ошибка загрузки списка")
+        await callback.message.answer(
+            "❌ **Ошибка загрузки списка**\n\n"
+            "Не удалось загрузить список пользователей.",
+            reply_markup=get_back_to_main_keyboard(),
+            parse_mode="Markdown"
+        )
 
+@dp.callback_query(F.data == "admin_stats")
+async def admin_detailed_stats(callback: types.CallbackQuery):
+    """Показывает детальную статистику"""
+    try:
+        if not await is_admin(callback.from_user.id):
+            await callback.answer("❌ У вас нет доступа к этой функции")
+            return
+        
+        await callback.answer("📊 Загружаю детальную статистику...")
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            # Статистика по дням
+            cursor = await db.execute("""
+                SELECT DATE(created_at) as date, COUNT(*) as count 
+                FROM users 
+                WHERE created_at >= date('now', '-30 days')
+                GROUP BY DATE(created_at) 
+                ORDER BY date DESC
+            """)
+            daily_users = await cursor.fetchall()
+            
+            # Топ форматов
+            cursor = await db.execute("""
+                SELECT format_type, COUNT(*) as count 
+                FROM downloaded_books 
+                GROUP BY format_type 
+                ORDER BY count DESC
+            """)
+            format_stats = await cursor.fetchall()
+            
+            # Топ авторов
+            cursor = await db.execute("""
+                SELECT book_author, COUNT(*) as count 
+                FROM downloaded_books 
+                WHERE book_author IS NOT NULL 
+                GROUP BY book_author 
+                ORDER BY count DESC 
+                LIMIT 10
+            """)
+            top_authors = await cursor.fetchall()
+        
+        text = "📊 **Детальная статистика за 30 дней:**\n\n"
+        
+        if daily_users:
+            text += "📈 **Новые пользователи по дням:**\n"
+            for date, count in daily_users[:7]:  # Показываем последние 7 дней
+                text += f"   {date}: +{count}\n"
+            text += "\n"
+        
+        if format_stats:
+            text += "📖 **Популярные форматы:**\n"
+            for format_type, count in format_stats:
+                text += f"   {format_type.upper()}: {count}\n"
+            text += "\n"
+        
+        if top_authors:
+            text += "👤 **Топ авторов:**\n"
+            for author, count in top_authors:
+                text += f"   {author}: {count} книг\n"
+        
+        await callback.message.answer(
+            text,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="👑 Админ-панель", callback_data="admin_panel")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+            ]),
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка показа детальной статистики: {e}")
+        await callback.answer("❌ Ошибка загрузки статистики")
+        await callback.message.answer(
+            "❌ **Ошибка загрузки статистики**\n\n"
+            "Не удалось загрузить детальную статистику.",
+            reply_markup=get_back_to_main_keyboard(),
+            parse_mode="Markdown"
+        )
+
+@dp.callback_query(F.data == "admin_add")
+async def admin_add_admin(callback: types.CallbackQuery):
+    """Добавление нового администратора"""
+    try:
+        if not await is_admin(callback.from_user.id):
+            await callback.answer("❌ У вас нет доступа к этой функции")
+            return
+        
+        await callback.answer("➕ Переходим к добавлению админа...")
+        
+        # Показываем инструкцию
+        await callback.message.answer(
+            "➕ **Добавление администратора**\n\n"
+            "Чтобы добавить нового администратора:\n\n"
+            "1️⃣ Отправьте команду `/add_admin <telegram_id>`\n"
+            "2️⃣ Или перешлите сообщение от пользователя\n"
+            "3️⃣ Или отправьте username пользователя\n\n"
+            "**Пример:** `/add_admin 123456789`",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="👑 Админ-панель", callback_data="admin_panel")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+            ]),
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка показа формы добавления админа: {e}")
+        await callback.answer("❌ Ошибка загрузки формы")
+        await callback.message.answer(
+            "❌ **Ошибка загрузки формы**\n\n"
+            "Не удалось загрузить форму добавления администратора.",
+            reply_markup=get_back_to_main_keyboard(),
+            parse_mode="Markdown"
+        )
+
+# Команда для добавления администратора
+@dp.message(Command("add_admin"))
+async def cmd_add_admin(message: types.Message):
+    """Команда добавления администратора"""
+    try:
+        # Проверяем права администратора
+        if not await is_admin(message.from_user.id):
+            await message.answer("❌ У вас нет доступа к этой команде")
+            return
+        
+        # Парсим аргументы
+        args = message.text.split()
+        if len(args) != 2:
+            await message.answer(
+                "❌ **Неверный формат команды**\n\n"
+                "Используйте: `/add_admin <telegram_id>`\n"
+                "**Пример:** `/add_admin 123456789`",
+                parse_mode="Markdown"
+            )
+            return
+        
+        try:
+            new_admin_id = int(args[1])
+        except ValueError:
+            await message.answer("❌ **Неверный ID пользователя**\n\n"
+                               "ID должен быть числом. Пример: `/add_admin 123456789`",
+                               parse_mode="Markdown")
+            return
+        
+        # Добавляем администратора
+        await add_admin(new_admin_id)
+        
+        await message.answer(
+            f"✅ **Администратор добавлен!**\n\n"
+            f"🆔 ID: `{new_admin_id}`\n"
+            f"👤 Пользователь теперь имеет доступ к админ-панели",
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка добавления администратора: {e}")
+        await message.answer("❌ **Ошибка добавления администратора**\n\n"
+                           "Не удалось добавить пользователя. Попробуйте еще раз.")
+
+# Команда для удаления администратора
+@dp.message(Command("remove_admin"))
+async def cmd_remove_admin(message: types.Message):
+    """Команда удаления администратора"""
+    try:
+        # Проверяем права администратора
+        if not await is_admin(message.from_user.id):
+            await message.answer("❌ У вас нет доступа к этой команде")
+            return
+        
+        # Парсим аргументы
+        args = message.text.split()
+        if len(args) != 2:
+            await message.answer(
+                "❌ **Неверный формат команды**\n\n"
+                "Используйте: `/remove_admin <telegram_id>`\n"
+                "**Пример:** `/remove_admin 123456789`",
+                parse_mode="Markdown"
+            )
+            return
+        
+        try:
+            admin_id = int(args[1])
+        except ValueError:
+            await message.answer("❌ **Неверный ID пользователя**\n\n"
+                               "ID должен быть числом. Пример: `/remove_admin 123456789`",
+                               parse_mode="Markdown")
+            return
+        
+        # Удаляем администратора
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("DELETE FROM admin_users WHERE telegram_id = ?", (admin_id,))
+            await db.commit()
+        
+        await message.answer(
+            f"✅ **Администратор удален!**\n\n"
+            f"🆔 ID: `{admin_id}`\n"
+            f"👤 Пользователь больше не имеет доступа к админ-панели",
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка удаления администратора: {e}")
+        await message.answer("❌ **Ошибка удаления администратора**\n\n"
+                           "Не удалось удалить пользователя. Попробуйте еще раз.")
+
+# Команда для просмотра списка администраторов
+@dp.message(Command("list_admins"))
+async def cmd_list_admins(message: types.Message):
+    """Команда просмотра списка администраторов"""
+    try:
+        # Проверяем права администратора
+        if not await is_admin(message.from_user.id):
+            await message.answer("❌ У вас нет доступа к этой команде")
+            return
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("SELECT telegram_id, username FROM admin_users")
+            admins = await cursor.fetchall()
+        
+        if not admins:
+            await message.answer("📭 **Список администраторов пуст**\n\n"
+                               "В системе нет администраторов.")
+            return
+        
+        text = "👑 **Список администраторов:**\n\n"
+        for i, (admin_id, username) in enumerate(admins, 1):
+            text += f"{i}. ID: `{admin_id}`\n"
+            if username:
+                text += f"   👤 @{username}\n"
+            text += "\n"
+        
+        await message.answer(text, parse_mode="Markdown")
+        
+    except Exception as e:
+        logger.error(f"Ошибка показа списка администраторов: {e}")
+        await message.answer("❌ **Ошибка загрузки списка**\n\n"
+                           "Не удалось загрузить список администраторов.")
+
+# Команда для установки первого администратора (без проверки прав)
+@dp.message(Command("setup_admin"))
+async def cmd_setup_admin(message: types.Message):
+    """Команда установки первого администратора (без проверки прав)"""
+    try:
+        # Проверяем, есть ли уже администраторы
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM admin_users")
+            admin_count = (await cursor.fetchone())[0]
+        
+        if admin_count > 0:
+            await message.answer(
+                "⚠️ **Администраторы уже настроены**\n\n"
+                "В системе уже есть администраторы. "
+                "Используйте команду `/add_admin` для добавления новых.",
+                parse_mode="Markdown"
+            )
+            return
+        
+        # Добавляем первого администратора
+        user_id = message.from_user.id
+        username = message.from_user.username
+        
+        await add_admin(user_id, username)
+        
+        await message.answer(
+            f"🎉 **Первый администратор настроен!**\n\n"
+            f"🆔 ID: `{user_id}`\n"
+            f"👤 Username: @{username if username else 'Нет'}\n\n"
+            f"Теперь у вас есть доступ к админ-панели! "
+            f"Используйте кнопку '👑 Админ-панель' в главном меню.",
+            parse_mode="Markdown"
+        )
+        
+    except Exception as e:
+        logger.error(f"Ошибка настройки первого администратора: {e}")
+        await message.answer("❌ **Ошибка настройки администратора**\n\n"
+                           "Не удалось настроить первого администратора. Попробуйте еще раз.")
 
 @dp.callback_query(F.data == "admin_panel")
 async def admin_panel_callback(callback: types.CallbackQuery):
