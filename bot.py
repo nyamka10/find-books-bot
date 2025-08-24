@@ -312,10 +312,16 @@ async def kindle_settings_menu(message: types.Message):
     if kindle_email:
         await message.answer(
             f"⚙️ **Настройки Kindle**\n\n"
-            f"📧 **Текущий email:** `{kindle_email}`\n\n"
-            "Для изменения email нажмите кнопку ниже:",
+            f"📬 **Текущий email:** `{kindle_email}`\n"
+            f"✅ **Статус:** Настроено и готово к использованию\n\n"
+            f"🔧 **Действия:**\n"
+            f"• Изменить email\n"
+            f"• Отправить тестовую книгу\n"
+            f"• Просмотреть историю отправок\n\n"
+            f"Выберите действие:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="✏️ Изменить email", callback_data="change_kindle_email")],
+                [InlineKeyboardButton(text="📚 История Kindle", callback_data="kindle_history")],
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
             ]),
             parse_mode="Markdown"
@@ -324,9 +330,10 @@ async def kindle_settings_menu(message: types.Message):
         await message.answer(
             "⚙️ **Настройка Kindle**\n\n"
             "📧 Для отправки книг на Kindle нужно указать ваш Kindle email.\n\n"
-            "🔗 **Важно:** Добавьте адрес бота `abookerbot@gmail.com` в белый список:\n"
-            "https://telegra.ph/Dobavlenie-pochty-v-belyj-spisok-Amazon-08-24\n\n"
-            "После этого введите ваш Kindle email:",
+            "🔐 **Шаг 1: Добавьте бота в белый список Amazon**\n"
+            "📋 Подробная инструкция: [Нажмите здесь](https://telegra.ph/Dobavlenie-pochty-v-belyj-spisok-Amazon-08-24)\n\n"
+            "📝 **Шаг 2: Введите ваш Kindle email**\n"
+            "После добавления бота в белый список, нажмите кнопку ниже:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="📧 Ввести email", callback_data="set_kindle_email")],
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
@@ -972,11 +979,12 @@ async def process_kindle_email(message: types.Message, state: FSMContext):
     
     await message.answer(
         f"📧 **Подтвердите настройки Kindle**\n\n"
-        f"**Email:** `{email}`\n\n"
-        f"⚠️ **Важно:** Убедитесь, что:\n"
-        f"1. Email указан верно\n"
-        f"2. Адрес `abookerbot@gmail.com` добавлен в белый список Amazon\n\n"
-        f"Все верно?",
+        f"📬 **Ваш email:** `{email}`\n\n"
+        f"🔍 **Проверьте настройки:**\n"
+        f"✅ Email указан верно\n"
+        f"✅ Бот `abookerbot@gmail.com` добавлен в белый список Amazon\n\n"
+        f"📋 **Инструкция:** [Нажмите здесь](https://telegra.ph/Dobavlenie-pochty-v-belyj-spisok-Amazon-08-24)\n\n"
+        f"🎯 **Все настроено правильно?**",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, все верно", callback_data="confirm_kindle_email")],
             [InlineKeyboardButton(text="❌ Нет, изменить", callback_data="set_kindle_email")],
@@ -996,9 +1004,14 @@ async def confirm_kindle_email_callback(callback: types.CallbackQuery, state: FS
         await save_user_kindle_email(callback.from_user.id, email)
         
         await callback.message.edit_text(
-            f"✅ **Kindle email сохранен!**\n\n"
-            f"📧 Email: `{email}`\n\n"
-            f"Теперь вы можете отправлять книги на Kindle прямо из бота!",
+            f"🎉 **Kindle email успешно сохранен!**\n\n"
+            f"📬 **Email:** `{email}`\n"
+            f"🔐 **Статус:** Бот добавлен в белый список\n\n"
+            f"📚 **Теперь вы можете:**\n"
+            f"• Отправлять книги на Kindle прямо из бота\n"
+            f"• Получать книги в течение нескольких минут\n"
+            f"• Использовать все форматы (EPUB, FB2, MOBI)\n\n"
+            f"🚀 **Готово к использованию!**",
             reply_markup=get_back_to_main_keyboard(),
             parse_mode="Markdown"
         )
