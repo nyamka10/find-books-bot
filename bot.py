@@ -45,7 +45,7 @@ storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
 # База данных
-DB_PATH = "flibusta_bot.db"
+DB_PATH = "data/flibusta_bot.db"
 
 def escape_markdown(text: str) -> str:
     """Экранирует специальные символы для Markdown"""
@@ -79,6 +79,10 @@ def escape_markdown(text: str) -> str:
 
 async def init_db():
     """Инициализация базы данных"""
+    # Создаем директорию data, если её нет
+    import os
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (

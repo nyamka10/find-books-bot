@@ -13,6 +13,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env:ro
+      - kindle_bot_data:/app/data
     networks:
       - flibusta-network
     healthcheck:
@@ -25,3 +26,7 @@ services:
 networks:
   flibusta-network:
     driver: bridge
+
+volumes:
+  kindle_bot_data:
+    driver: local

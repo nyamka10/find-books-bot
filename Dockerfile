@@ -18,13 +18,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем исходный код
 COPY . .
 
+# Создаем директорию для базы данных
+RUN mkdir -p /app/data
+
 # Создаем пользователя для безопасности
 RUN useradd --create-home --shell /bin/bash bot && \
     chown -R bot:bot /app
 USER bot
-
-# Создаем директорию для базы данных
-RUN mkdir -p /app/data
 
 # Открываем порт (если понадобится для мониторинга)
 EXPOSE 8000
