@@ -300,7 +300,7 @@ async def search_books_menu(message: types.Message, state: FSMContext):
     )
     # Скрываем главное меню
     await message.answer(
-        "⌨️ Главное меню скрыто. Используйте кнопку '🏠 Главное меню' для возврата.",
+        "⌨️ Главное меню скрыто.",
         reply_markup=get_empty_keyboard()
     )
 
@@ -325,7 +325,7 @@ async def kindle_settings_menu(message: types.Message):
             "⚙️ **Настройка Kindle**\n\n"
             "📧 Для отправки книг на Kindle нужно указать ваш Kindle email.\n\n"
             "🔗 **Важно:** Добавьте адрес бота `abookerbot@gmail.com` в белый список:\n"
-            "https://www.amazon.com/hz/mycd/preferences/myx#/home/settings/payment\n\n"
+            "https://telegra.ph/Dobavlenie-pochty-v-belyj-spisok-Amazon-08-24\n\n"
             "После этого введите ваш Kindle email:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="📧 Ввести email", callback_data="set_kindle_email")],
@@ -336,7 +336,7 @@ async def kindle_settings_menu(message: types.Message):
     
     # Скрываем главное меню
     await message.answer(
-        "⌨️ Главное меню скрыто. Используйте кнопку '🏠 Главное меню' для возврата.",
+        "⌨️ Главное меню скрыто.",
         reply_markup=get_empty_keyboard()
     )
 
@@ -388,7 +388,7 @@ async def admin_panel(message: types.Message):
     
     # Скрываем главное меню
     await message.answer(
-        "⌨️ Главное меню скрыто. Используйте кнопку '🏠 Главное меню' для возврата.",
+        "⌨️ Главное меню скрыто.",
         reply_markup=get_empty_keyboard()
     )
 
