@@ -882,9 +882,9 @@ async def process_kindle_send(callback: types.CallbackQuery):
                     "❌ Ошибка отправки на Kindle\n\n"
                     "Не удалось отправить книгу. Попробуйте еще раз.",
                     reply_markup=get_back_to_main_keyboard()
-            )
-        except Exception as message_error:
-            logger.error(f"Не удалось отправить сообщение об ошибке: {message_error}")
+                )
+            except Exception as message_error:
+                logger.error(f"Не удалось отправить сообщение об ошибке: {message_error}")
 
 @dp.callback_query(F.data == "main_menu")
 async def back_to_main_menu(callback: types.CallbackQuery, state: FSMContext):
