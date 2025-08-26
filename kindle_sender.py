@@ -35,16 +35,19 @@ class KindleSender:
         if not self.kindle_email:
             raise ValueError("Не указан email для Kindle в .env файле")
     
-    def send_book_to_kindle(self, book_content: bytes, book_title: str, author: str = None) -> bool:
+    def send_book_to_kindle(self, book_content: bytes, book_title: str, author: str = None, user_kindle_email: str = None) -> bool:
         """Отправляет книгу на Kindle"""
         try:
+            # Используем email пользователя, если передан, иначе используем глобальный
+            target_email = user_kindle_email if user_kindle_email else self.kindle_email
             print(f"📧 Отправка книги '{book_title}' на Kindle...")
+            print(f"📧 Email получателя: {target_email}")
             
             # Создаем письмо
             msg = MIMEMultipart()
             msg["Subject"] = f"Книга: {book_title}"
             msg["From"] = self.login
-            msg["To"] = self.kindle_email
+            msg["To"] = target_email
             
             # Очищаем название книги для отображения
             clean_title = book_title.replace('"', '').replace("'", "").strip()
@@ -84,10 +87,10 @@ class KindleSender:
             # Отправляем письмо
             with smtplib.SMTP_SSL(self.smtp_server, self.port) as server:
                 server.login(self.login, self.password)
-                server.sendmail(msg["From"], [self.kindle_email], msg.as_string())
+                server.sendmail(msg["From"], [target_email], msg.as_string())
             
             print(f"✅ Книга '{book_title}' успешно отправлена на Kindle!")
-            print(f"📧 Email: {self.kindle_email}")
+            print(f"📧 Email: {target_email}")
             return True
             
         except Exception as e:
@@ -151,13 +154,13 @@ class KindleSender:
             return False
 
 
-async def send_book_to_kindle_async(book_content: bytes, book_title: str, author: str = None) -> bool:
+async def send_book_to_kindle_async(book_content: bytes, book_title: str, author: str = None, user_kindle_email: str = None) -> bool:
     """Асинхронная обертка для отправки книги на Kindle"""
     import asyncio
     
     def _send():
         sender = KindleSender()
-        return sender.send_book_to_kindle(book_content, book_title, author)
+        return sender.send_book_to_kindle(book_content, book_title, author, user_kindle_email)
     
     # Запускаем в отдельном потоке, чтобы не блокировать asyncio
     loop = asyncio.get_event_loop()
