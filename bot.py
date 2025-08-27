@@ -173,6 +173,20 @@ async def save_kindle_sent_book(telegram_id: int, book_title: str, book_author: 
         """, (telegram_id, book_title, book_author))
         await db.commit()
 
+async def check_kindle_book_already_sent(telegram_id: int, book_title: str, book_author: str) -> bool:
+    """Проверяет, была ли книга уже отправлена на Kindle"""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("""
+                SELECT COUNT(*) FROM kindle_sent_books 
+                WHERE telegram_id = ? AND book_title = ? AND book_author = ?
+            """, (telegram_id, book_title, book_author))
+            count = (await cursor.fetchone())[0]
+            return count > 0
+    except Exception as e:
+        logger.error(f"Ошибка проверки дублирования книги: {e}")
+        return False
+
 async def save_search_history(telegram_id: int, search_query: str, results_count: int):
     """Сохраняет историю поиска"""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -390,6 +404,17 @@ async def admin_panel(message: types.Message):
     text += f"⬇️ Загрузок: {total_downloads}\n"
     text += f"📧 Kindle отправок: {total_kindle}\n"
     text += f"🔍 Поисков: {total_searches}\n\n"
+    
+    # Статистика по дублированию
+    cursor = await db.execute("""
+        SELECT COUNT(*) FROM kindle_sent_books 
+        GROUP BY telegram_id, book_title, book_author 
+        HAVING COUNT(*) > 1
+    """)
+    duplicate_books = (await cursor.fetchall())
+    if duplicate_books:
+        text += f"⚠️ **Дублирование:** {len(duplicate_books)} книг отправлялись повторно\n\n"
+    
     text += "**Действия:**"
     
     await message.answer(
@@ -399,6 +424,7 @@ async def admin_panel(message: types.Message):
             [InlineKeyboardButton(text="📊 Детальная статистика", callback_data="admin_stats")],
             [InlineKeyboardButton(text="➕ Добавить админа", callback_data="admin_add")],
             [InlineKeyboardButton(text="🗑️ Очистить кеш бота", callback_data="admin_clear_cache")],
+            [InlineKeyboardButton(text="🧹 Очистить дубли", callback_data="admin_clear_duplicates")],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
         ]),
         parse_mode="Markdown"
@@ -777,6 +803,34 @@ async def process_kindle_send(callback: types.CallbackQuery):
             )
             return
         
+        # Получаем детали книги для проверки дублирования
+        async with FlibustaParser() as parser:
+            if not await parser.login():
+                await callback.answer("❌ Ошибка авторизации")
+                return
+            
+            # Получаем детали книги
+            book_details = await parser.get_book_details(book_id)
+            
+            # Проверяем, была ли книга уже отправлена
+            already_sent = await check_kindle_book_already_sent(
+                callback.from_user.id, 
+                book_details['title'], 
+                book_details['author']
+            )
+            
+            if already_sent:
+                await callback.answer("⚠️ Книга уже была отправлена на Kindle")
+                await callback.message.answer(
+                    f"⚠️ **Книга уже отправлена!**\n\n"
+                    f"📖 {escape_markdown(book_details['title'])}\n"
+                    f"👤 {escape_markdown(book_details['author'])}\n\n"
+                    f"Эта книга уже была отправлена на ваш Kindle ранее.",
+                    reply_markup=get_back_to_main_keyboard(),
+                    parse_mode="Markdown"
+                )
+                return
+        
         await callback.answer("📧 Отправляю на Kindle...")
         
         async with FlibustaParser() as parser:
@@ -790,9 +844,6 @@ async def process_kindle_send(callback: types.CallbackQuery):
             if not book_content:
                 await callback.answer("❌ Не удалось скачать книгу")
                 return
-            
-            # Получаем детали книги
-            book_details = await parser.get_book_details(book_id)
             
             # Отправляем на Kindle
             kindle_sender = KindleSender()
@@ -1126,6 +1177,73 @@ async def show_kindle_history(callback: types.CallbackQuery):
         await callback.message.answer(
             "❌ **Ошибка загрузки истории**\n\n"
             "Не удалось загрузить историю Kindle. Попробуйте еще раз.",
+            reply_markup=get_back_to_main_keyboard(),
+            parse_mode="Markdown"
+        )
+
+@dp.callback_query(F.data == "admin_clear_duplicates")
+async def admin_clear_duplicates(callback: types.CallbackQuery):
+    """Очистка дублирующихся записей Kindle"""
+    try:
+        # Проверяем права администратора
+        if not await is_admin(callback.from_user.id):
+            await callback.answer("❌ У вас нет доступа к этой функции")
+            return
+        
+        await callback.answer("🧹 Очищаю дублирующиеся записи...")
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            # Получаем количество дублирующихся записей
+            cursor = await db.execute("""
+                SELECT COUNT(*) FROM (
+                    SELECT telegram_id, book_title, book_author, COUNT(*) as cnt
+                    FROM kindle_sent_books 
+                    GROUP BY telegram_id, book_title, book_author 
+                    HAVING COUNT(*) > 1
+                )
+            """)
+            duplicate_count = (await cursor.fetchone())[0]
+            
+            if duplicate_count == 0:
+                await callback.message.answer(
+                    "✅ **Дублирующиеся записи не найдены**\n\n"
+                    "Все записи Kindle уникальны.",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="👑 Админ-панель", callback_data="admin_panel")],
+                        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+                    ]),
+                    parse_mode="Markdown"
+                )
+                return
+            
+            # Удаляем дублирующиеся записи, оставляя только первую
+            await db.execute("""
+                DELETE FROM kindle_sent_books 
+                WHERE rowid NOT IN (
+                    SELECT MIN(rowid) 
+                    FROM kindle_sent_books 
+                    GROUP BY telegram_id, book_title, book_author
+                )
+            """)
+            await db.commit()
+            
+            await callback.message.answer(
+                f"✅ **Дублирующиеся записи очищены!**\n\n"
+                f"🧹 Удалено дублирующихся записей: {duplicate_count}\n"
+                f"📚 Теперь каждая книга отправляется только один раз",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="👑 Админ-панель", callback_data="admin_panel")],
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
+                ]),
+                parse_mode="Markdown"
+            )
+        
+    except Exception as e:
+        logger.error(f"Ошибка очистки дублирующихся записей: {e}")
+        await callback.answer("❌ Ошибка очистки дублирующихся записей")
+        await callback.message.answer(
+            "❌ **Ошибка очистки дублирующихся записей**\n\n"
+            "Не удалось очистить дублирующиеся записи. Попробуйте еще раз.",
             reply_markup=get_back_to_main_keyboard(),
             parse_mode="Markdown"
         )
@@ -1585,6 +1703,7 @@ async def admin_panel_callback(callback: types.CallbackQuery):
                 [InlineKeyboardButton(text="📊 Детальная статистика", callback_data="admin_stats")],
                 [InlineKeyboardButton(text="➕ Добавить админа", callback_data="admin_add")],
                 [InlineKeyboardButton(text="🗑️ Очистить кеш бота", callback_data="admin_clear_cache")],
+                [InlineKeyboardButton(text="🧹 Очистить дубли", callback_data="admin_clear_duplicates")],
                 [InlineKeyboardButton(text="🏠 Главное меню", callback_data="main_menu")]
             ]),
             parse_mode="Markdown"
