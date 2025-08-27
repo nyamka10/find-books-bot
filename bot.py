@@ -184,13 +184,19 @@ async def save_search_history(telegram_id: int, search_query: str, results_count
 
 async def is_admin(telegram_id: int) -> bool:
     """Проверяет, является ли пользователь администратором"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "SELECT telegram_id FROM admin_users WHERE telegram_id = ?", 
-            (telegram_id,)
-        )
-        result = await cursor.fetchone()
-        return result is not None
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                "SELECT telegram_id FROM admin_users WHERE telegram_id = ?", 
+                (telegram_id,)
+            )
+            result = await cursor.fetchone()
+            is_admin_result = result is not None
+            logger.info(f"Проверка прав администратора для {telegram_id}: {is_admin_result}")
+            return is_admin_result
+    except Exception as e:
+        logger.error(f"Ошибка проверки прав администратора для {telegram_id}: {e}")
+        return False
 
 async def add_admin(telegram_id: int, username: str = None):
     """Добавляет администратора"""
@@ -277,6 +283,7 @@ async def cmd_start(message: types.Message):
     """Обработчик команды /start"""
     # Проверяем, является ли пользователь администратором
     is_admin_user = await is_admin(message.from_user.id)
+    logger.info(f"Пользователь {message.from_user.id} (@{message.from_user.username}): is_admin = {is_admin_user}")
     
     welcome_text = "📚 Добро пожаловать в бот Флибуста!\n\n"
     welcome_text += "🔍 Ищите книги, скачивайте их в разных форматах\n"
@@ -286,8 +293,10 @@ async def cmd_start(message: types.Message):
         welcome_text += "👑 **Вы администратор**\n"
         welcome_text += "Доступна админ-панель\n\n"
         keyboard = get_admin_keyboard()
+        logger.info(f"Пользователь {message.from_user.id} получил админ-клавиатуру")
     else:
         keyboard = get_main_menu_keyboard()
+        logger.info(f"Пользователь {message.from_user.id} получил обычную клавиатуру")
     
     welcome_text += "Выберите действие:"
     
@@ -1458,6 +1467,44 @@ async def cmd_list_admins(message: types.Message):
         logger.error(f"Ошибка показа списка администраторов: {e}")
         await message.answer("❌ **Ошибка загрузки списка**\n\n"
                            "Не удалось загрузить список администраторов.")
+
+# Команда для проверки статуса администратора
+@dp.message(Command("check_admin"))
+async def cmd_check_admin(message: types.Message):
+    """Команда проверки статуса администратора"""
+    try:
+        user_id = message.from_user.id
+        username = message.from_user.username
+        
+        # Проверяем права администратора
+        is_admin_user = await is_admin(user_id)
+        
+        # Получаем информацию о пользователе
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM admin_users")
+            total_admins = (await cursor.fetchone())[0]
+            
+            cursor = await db.execute("SELECT telegram_id, username FROM admin_users")
+            admins = await cursor.fetchall()
+        
+        text = f"🔍 **Проверка статуса администратора**\n\n"
+        text += f"🆔 **Ваш ID:** `{user_id}`\n"
+        text += f"👤 **Username:** @{username if username else 'Нет'}\n"
+        text += f"👑 **Статус:** {'Администратор' if is_admin_user else 'Обычный пользователь'}\n\n"
+        text += f"📊 **Информация о системе:**\n"
+        text += f"• Всего администраторов: {total_admins}\n"
+        
+        if admins:
+            text += f"• Список администраторов:\n"
+            for admin_id, admin_username in admins:
+                text += f"  - ID: `{admin_id}` (@{admin_username if admin_username else 'Нет'})\n"
+        
+        await message.answer(text, parse_mode="Markdown")
+        
+    except Exception as e:
+        logger.error(f"Ошибка проверки статуса администратора: {e}")
+        await message.answer("❌ **Ошибка проверки статуса**\n\n"
+                           "Не удалось проверить статус администратора.")
 
 # Команда для установки первого администратора (без проверки прав)
 @dp.message(Command("setup_admin"))
