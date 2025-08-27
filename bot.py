@@ -237,6 +237,14 @@ def get_admin_keyboard() -> ReplyKeyboardMarkup:
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
+async def get_user_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
+    """Возвращает подходящую клавиатуру для пользователя"""
+    is_admin_user = await is_admin(telegram_id)
+    if is_admin_user:
+        return get_admin_keyboard()
+    else:
+        return get_main_menu_keyboard()
+
 def get_back_to_main_keyboard() -> InlineKeyboardMarkup:
     """Кнопка возврата в главное меню"""
     keyboard = [
@@ -306,11 +314,10 @@ async def cmd_start(message: types.Message):
     if is_admin_user:
         welcome_text += "👑 **Вы администратор**\n"
         welcome_text += "Доступна админ-панель\n\n"
-        keyboard = get_admin_keyboard()
-        logger.info(f"Пользователь {message.from_user.id} получил админ-клавиатуру")
-    else:
-        keyboard = get_main_menu_keyboard()
-        logger.info(f"Пользователь {message.from_user.id} получил обычную клавиатуру")
+    
+    # Получаем подходящую клавиатуру для пользователя
+    keyboard = await get_user_keyboard(message.from_user.id)
+    logger.info(f"Пользователь {message.from_user.id} получил клавиатуру")
     
     welcome_text += "Выберите действие:"
     
@@ -951,12 +958,17 @@ async def back_to_main_menu(callback: types.CallbackQuery, state: FSMContext):
     """Возврат в главное меню"""
     try:
         await state.clear()
+        
+        # Получаем подходящую клавиатуру для пользователя
+        keyboard = await get_user_keyboard(callback.from_user.id)
+        logger.info(f"Возврат в главное меню для пользователя {callback.from_user.id}: получена клавиатура")
+        
         # Показываем главное меню с ReplyKeyboardMarkup
         try:
             await callback.message.answer(
                 "🏠 **Главное меню**\n\n"
                 "Выберите действие:",
-                reply_markup=get_main_menu_keyboard(),
+                reply_markup=keyboard,
                 parse_mode="Markdown"
             )
         except Exception as markdown_error:
@@ -964,18 +976,26 @@ async def back_to_main_menu(callback: types.CallbackQuery, state: FSMContext):
             await callback.message.answer(
                 "🏠 Главное меню\n\n"
                 "Выберите действие:",
-                reply_markup=get_main_menu_keyboard()
+                reply_markup=keyboard
             )
         await callback.answer("🏠 Возврат в главное меню")
     except Exception as e:
         logger.error(f"Ошибка возврата в главное меню: {e}")
         # Если не удалось отредактировать, отправляем новое сообщение
-        await callback.message.answer(
-            "🏠 **Главное меню**\n\n"
-            "Выберите действие:",
-            reply_markup=get_main_menu_keyboard(),
-            parse_mode="Markdown"
-        )
+        try:
+            await callback.message.answer(
+                "🏠 **Главное меню**\n\n"
+                "Выберите действие:",
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
+        except Exception as markdown_error:
+            logger.warning(f"Ошибка Markdown форматирования в сообщении об ошибке: {markdown_error}")
+            await callback.message.answer(
+                "🏠 Главное меню\n\n"
+                "Выберите действие:",
+                reply_markup=keyboard
+            )
         await callback.answer("🏠 Возврат в главное меню")
 
 @dp.callback_query(F.data == "kindle_settings")
