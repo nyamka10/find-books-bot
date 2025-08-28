@@ -404,6 +404,14 @@ async def admin_panel(message: types.Message):
         
         cursor = await db.execute("SELECT COUNT(*) FROM search_history")
         total_searches = (await cursor.fetchone())[0]
+        
+        # Статистика по дублированию
+        cursor = await db.execute("""
+            SELECT COUNT(*) FROM kindle_sent_books 
+            GROUP BY telegram_id, book_title, book_author 
+            HAVING COUNT(*) > 1
+        """)
+        duplicate_books = (await cursor.fetchall())
     
     text = f"👑 **Админ-панель**\n\n"
     text += f"📊 **Общая статистика:**\n"
@@ -412,13 +420,6 @@ async def admin_panel(message: types.Message):
     text += f"📧 Kindle отправок: {total_kindle}\n"
     text += f"🔍 Поисков: {total_searches}\n\n"
     
-    # Статистика по дублированию
-    cursor = await db.execute("""
-        SELECT COUNT(*) FROM kindle_sent_books 
-        GROUP BY telegram_id, book_title, book_author 
-        HAVING COUNT(*) > 1
-    """)
-    duplicate_books = (await cursor.fetchall())
     if duplicate_books:
         text += f"⚠️ **Дублирование:** {len(duplicate_books)} книг отправлялись повторно\n\n"
     
