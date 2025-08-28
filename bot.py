@@ -47,6 +47,9 @@ dp = Dispatcher(storage=storage)
 # База данных
 DB_PATH = "data/flibusta_bot.db"
 
+# Словарь для отслеживания активных отправок на Kindle (защита от множественных нажатий)
+kindle_sending_locks = {}
+
 def escape_markdown(text: str) -> str:
     """Экранирует специальные символы для Markdown"""
     if not text:
@@ -186,6 +189,34 @@ async def check_kindle_book_already_sent(telegram_id: int, book_title: str, book
     except Exception as e:
         logger.error(f"Ошибка проверки дублирования книги: {e}")
         return False
+
+def is_kindle_sending_locked(telegram_id: int, book_id: str) -> bool:
+    """Проверяет, заблокирована ли отправка на Kindle для данного пользователя и книги"""
+    lock_key = f"{telegram_id}_{book_id}"
+    return lock_key in kindle_sending_locks
+
+def set_kindle_sending_lock(telegram_id: int, book_id: str):
+    """Устанавливает блокировку отправки на Kindle"""
+    lock_key = f"{telegram_id}_{book_id}"
+    kindle_sending_locks[lock_key] = time.time()
+
+def remove_kindle_sending_lock(telegram_id: int, book_id: str):
+    """Убирает блокировку отправки на Kindle"""
+    lock_key = f"{telegram_id}_{book_id}"
+    if lock_key in kindle_sending_locks:
+        del kindle_sending_locks[lock_key]
+
+def cleanup_expired_locks():
+    """Очищает устаревшие блокировки (старше 5 минут)"""
+    current_time = time.time()
+    expired_keys = []
+    
+    for lock_key, lock_time in kindle_sending_locks.items():
+        if current_time - lock_time > 300:  # 5 минут
+            expired_keys.append(lock_key)
+    
+    for key in expired_keys:
+        del kindle_sending_locks[key]
 
 async def save_search_history(telegram_id: int, search_query: str, results_count: int):
     """Сохраняет историю поиска"""
@@ -796,10 +827,20 @@ async def process_kindle_send(callback: types.CallbackQuery):
             
         book_id = callback.data.split("_", 1)[1]
         
+        # Проверяем блокировку отправки (защита от множественных нажатий)
+        if is_kindle_sending_locked(callback.from_user.id, book_id):
+            await callback.answer("⏳ Отправка уже выполняется, подождите...")
+            return
+        
+        # Устанавливаем блокировку
+        set_kindle_sending_lock(callback.from_user.id, book_id)
+        
         # Проверяем настройки Kindle
         kindle_email = await get_user_kindle_email(callback.from_user.id)
         
         if not kindle_email:
+            # Убираем блокировку при ошибке
+            remove_kindle_sending_lock(callback.from_user.id, book_id)
             await callback.answer("❌ Настройте Kindle email")
             await callback.message.answer(
                 "❌ **Kindle email не настроен!**\n\n"
@@ -907,7 +948,14 @@ async def process_kindle_send(callback: types.CallbackQuery):
                         f"Книга будет доставлена на ваш Kindle в течение нескольких минут.",
                         reply_markup=get_back_to_main_keyboard()
                     )
+                
+                # Убираем блокировку после успешной отправки
+                remove_kindle_sending_lock(callback.from_user.id, book_id)
+                
             else:
+                # Убираем блокировку при ошибке отправки
+                remove_kindle_sending_lock(callback.from_user.id, book_id)
+                
                 # Проверяем валидность callback'а перед отправкой ответа
                 try:
                     await callback.answer("❌ Ошибка отправки на Kindle")
@@ -930,6 +978,9 @@ async def process_kindle_send(callback: types.CallbackQuery):
                     )
             
     except Exception as e:
+        # Убираем блокировку при любой ошибке
+        remove_kindle_sending_lock(callback.from_user.id, book_id)
+        
         logger.error(f"Ошибка отправки на Kindle: {e}")
         try:
             await callback.answer("❌ Произошла ошибка")
@@ -1748,7 +1799,21 @@ async def main():
     
     # Запускаем бота
     logger.info("🚀 Бот запускается...")
+    
+    # Запускаем фоновую задачу очистки устаревших блокировок
+    asyncio.create_task(cleanup_locks_periodically())
+    
     await dp.start_polling(bot)
+
+async def cleanup_locks_periodically():
+    """Периодически очищает устаревшие блокировки"""
+    while True:
+        try:
+            cleanup_expired_locks()
+            await asyncio.sleep(300)  # Проверяем каждые 5 минут
+        except Exception as e:
+            logger.error(f"Ошибка при очистке блокировок: {e}")
+            await asyncio.sleep(60)  # При ошибке ждем минуту
 
 if __name__ == "__main__":
     asyncio.run(main())
