@@ -59,11 +59,15 @@ def escape_markdown(text: str) -> str:
     if len(text) > 1000:
         text = text[:1000] + "..."
     
-    # Экранируем все специальные символы Markdown
-    special_chars = ['*', '_', '[', ']', '`', '#', '+', '-', '=', '|', '{', '}', '.', '!', '(', ')', '~', '>', '<']
+    # Более надежное экранирование специальных символов Markdown
+    special_chars = ['*', '_', '[', ']', '`', '#', '+', '-', '=', '|', '{', '}', '.', '!', '(', ')', '~', '>', '<', '\\']
     escaped_text = text
     
-    for char in special_chars:
+    # Сначала экранируем обратные слеши, чтобы избежать двойного экранирования
+    escaped_text = escaped_text.replace('\\', '\\\\')
+    
+    # Затем экранируем остальные специальные символы
+    for char in special_chars[:-1]:  # Исключаем обратный слеш, так как он уже обработан
         escaped_text = escaped_text.replace(char, f'\\{char}')
     
     # Дополнительная проверка на экранирование
@@ -77,8 +81,44 @@ def escape_markdown(text: str) -> str:
         safe_text = text.replace('*', '').replace('_', '').replace('[', '').replace(']', '').replace('`', '')
         safe_text = safe_text.replace('#', '').replace('+', '').replace('-', '').replace('=', '').replace('|', '')
         safe_text = safe_text.replace('{', '').replace('}', '').replace('.', '').replace('!', '').replace('(', '').replace(')', '')
-        safe_text = safe_text.replace('~', '').replace('>', '').replace('<', '')
+        safe_text = safe_text.replace('~', '').replace('>', '').replace('<', '').replace('\\', '')
         return safe_text[:500]  # Ограничиваем длину
+
+def safe_markdown_text(text: str, max_length: int = 1000) -> str:
+    """Безопасно подготавливает текст для Markdown с fallback на обычный текст"""
+    if not text:
+        return ""
+    
+    # Ограничиваем длину входного текста
+    if len(text) > max_length:
+        text = text[:max_length-3] + "..."
+    
+    # Пытаемся экранировать для Markdown
+    try:
+        escaped = escape_markdown(text)
+        
+        # Дополнительная проверка - тестируем Markdown на коротком фрагменте
+        test_text = f"**{escaped[:100]}**"
+        if len(test_text) > 100:
+            test_text = test_text[:97] + "..."
+        
+        # Если экранирование прошло успешно, возвращаем результат
+        return escaped
+        
+    except Exception as e:
+        logger.warning(f"Ошибка экранирования Markdown для текста '{text[:50]}...': {e}")
+        
+        # Fallback: возвращаем безопасный текст без Markdown
+        safe_text = text.replace('*', '').replace('_', '').replace('[', '').replace(']', '').replace('`', '')
+        safe_text = safe_text.replace('#', '').replace('+', '').replace('-', '').replace('=', '').replace('|', '')
+        safe_text = safe_text.replace('{', '').replace('}', '').replace('.', '').replace('!', '').replace('(', '').replace(')', '')
+        safe_text = safe_text.replace('~', '').replace('>', '').replace('<', '').replace('\\', '')
+        safe_text = safe_text.replace('"', '').replace("'", '').replace('`', '').replace('´', '')
+        
+        # Дополнительная очистка от проблемных символов
+        safe_text = ''.join(char for char in safe_text if ord(char) < 128 or char.isalpha() or char.isdigit() or char.isspace())
+        
+        return safe_text[:max_length]
 
 async def init_db():
     """Инициализация базы данных"""
@@ -560,8 +600,8 @@ def create_search_results_content(books: list, page: int, total_books: int, quer
         author = book.get('author', 'Автор не указан')
         
         # Экранируем специальные символы Markdown
-        title_escaped = escape_markdown(title)
-        author_escaped = escape_markdown(author)
+        title_escaped = safe_markdown_text(title)
+        author_escaped = safe_markdown_text(author)
         
         # Ограничиваем длину названия и автора для красивого отображения
         title_short = title_escaped[:50] + "..." if len(title_escaped) > 50 else title_escaped
@@ -648,7 +688,7 @@ async def process_page_callback(callback: types.CallbackQuery, state: FSMContext
         page_books = search_results[start_idx:end_idx]
         
         # Экранируем запрос для безопасного отображения в Markdown
-        query_escaped = escape_markdown(query)
+        query_escaped = safe_markdown_text(query)
         
         # Создаем новое содержимое для страницы
         text, keyboard = create_search_results_content(page_books, page, len(search_results), query_escaped)
@@ -696,19 +736,19 @@ async def process_book_selection_from_search(callback: types.CallbackQuery):
                 return
             
             # Формируем карточку книги
-            title_escaped = escape_markdown(book_details['title'])
-            author_escaped = escape_markdown(book_details['author'])
+            title_escaped = safe_markdown_text(book_details['title'])
+            author_escaped = safe_markdown_text(book_details['author'])
             
             text = f"📖 **{title_escaped}**\n\n"
             text += f"👤 **Автор:** {author_escaped}\n"
             
             if book_details.get('genres'):
-                genres_escaped = escape_markdown(', '.join(book_details['genres']))
+                genres_escaped = safe_markdown_text(', '.join(book_details['genres']))
                 text += f"🏷️ **Жанр:** {genres_escaped}\n"
             
             if book_details.get('description'):
                 desc = book_details['description'][:300] + "..." if len(book_details['description']) > 300 else book_details['description']
-                desc_escaped = escape_markdown(desc)
+                desc_escaped = safe_markdown_text(desc)
                 text += f"\n📝 **Описание:**\n{desc_escaped}\n"
             
             # Показываем карточку с кнопками форматов
@@ -770,8 +810,8 @@ async def process_download(callback: types.CallbackQuery):
             filename = f"{book_details['title']}.{format_type}"
             
             # Отправляем файл
-            title_escaped = escape_markdown(book_details['title'])
-            author_escaped = escape_markdown(book_details['author'])
+            title_escaped = safe_markdown_text(book_details['title'])
+            author_escaped = safe_markdown_text(book_details['author'])
             
             await callback.message.answer_document(
                 types.BufferedInputFile(
@@ -872,8 +912,8 @@ async def process_kindle_send(callback: types.CallbackQuery):
                 await callback.answer("⚠️ Книга уже была отправлена на Kindle")
                 await callback.message.answer(
                     f"⚠️ **Книга уже отправлена!**\n\n"
-                    f"📖 {escape_markdown(book_details['title'])}\n"
-                    f"👤 {escape_markdown(book_details['author'])}\n\n"
+                                    f"📖 {safe_markdown_text(book_details['title'])}\n"
+                f"👤 {safe_markdown_text(book_details['author'])}\n\n"
                     f"Эта книга уже была отправлена на ваш Kindle ранее.",
                     reply_markup=get_back_to_main_keyboard(),
                     parse_mode="Markdown"
@@ -918,8 +958,8 @@ async def process_kindle_send(callback: types.CallbackQuery):
                     logger.warning(f"Не удалось отправить callback answer после успешной отправки: {callback_error}")
                 
                 # Экранируем специальные символы Markdown
-                title_escaped = escape_markdown(book_details['title'])
-                author_escaped = escape_markdown(book_details['author'])
+                title_escaped = safe_markdown_text(book_details['title'])
+                author_escaped = safe_markdown_text(book_details['author'])
                 
                 # Дополнительная проверка на пустые значения
                 if not title_escaped:
